@@ -237,9 +237,11 @@ class AccountManager:
             except Exception as e:
                 logger.error(f"Failed to parse CREDENTIALS_JSON environment variable: {e}")
 
-        # 2. Check REFRESH_TOKENS environment variable (comma-separated tokens from Render)
+        # 2. Check REFRESH_TOKENS (comma or newline separated tokens)
         if REFRESH_TOKENS and REFRESH_TOKENS.strip():
-            tokens = [t.strip() for t in REFRESH_TOKENS.split(",") if t.strip()]
+            # Support both comma and newline separation
+            raw_tokens = REFRESH_TOKENS.replace("\n", ",").replace(";", ",")
+            tokens = [t.strip() for t in raw_tokens.split(",") if t.strip()]
             for token in tokens:
                 self._credentials_config.append({
                     "type": "refresh_token",
@@ -248,6 +250,21 @@ class AccountManager:
                 })
             if tokens:
                 logger.info(f"Loaded {len(tokens)} account(s) from REFRESH_TOKENS environment variable")
+
+        # 3. Check individual numbered variables (e.g. REFRESH_TOKEN_1, REFRESH_TOKEN_2, KIRO_TOKEN_1, etc.)
+        numbered_tokens = []
+        for key, val in os.environ.items():
+            k_upper = key.upper()
+            if (k_upper.startswith("REFRESH_TOKEN_") or k_upper.startswith("KIRO_TOKEN_")) and val.strip():
+                numbered_tokens.append(val.strip())
+        for token in numbered_tokens:
+            self._credentials_config.append({
+                "type": "refresh_token",
+                "refresh_token": token,
+                "enabled": True
+            })
+        if numbered_tokens:
+            logger.info(f"Loaded {len(numbered_tokens)} account(s) from numbered environment variables")
 
         # 3. Check credentials file on disk
         creds_path = Path(self._credentials_file).expanduser()
