@@ -221,12 +221,14 @@ def validate_configuration() -> None:
     Raises:
         SystemExit: If critical configuration is missing
     """
-    # Priority 1: Check if credentials.json exists or CREDENTIALS_JSON / REFRESH_TOKENS env is set
+    # Priority 1: Check if credentials.json exists or any account configuration is set
     from kiro.config import ACCOUNTS_CONFIG_FILE, CREDENTIALS_JSON_ENV, REFRESH_TOKENS
     creds_json_path = Path(ACCOUNTS_CONFIG_FILE)
+    account_sys = os.getenv("ACCOUNT_SYSTEM", "false").lower() in ("true", "1", "yes")
+    has_numbered_tokens = any(k.upper().startswith("REFRESH_TOKEN_") or k.upper().startswith("KIRO_TOKEN_") for k in os.environ)
     
-    if creds_json_path.exists() or bool(CREDENTIALS_JSON_ENV) or bool(REFRESH_TOKENS):
-        logger.debug(f"Found credentials configuration, skipping legacy .env validation")
+    if creds_json_path.exists() or bool(CREDENTIALS_JSON_ENV) or bool(REFRESH_TOKENS) or account_sys or has_numbered_tokens:
+        logger.debug("Found account configuration, skipping legacy .env validation")
         return
     
     # Priority 2: credentials.json doesn't exist - validate legacy .env variables
