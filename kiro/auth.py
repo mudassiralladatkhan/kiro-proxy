@@ -126,6 +126,8 @@ class KiroAuthManager:
         client_secret: Optional[str] = None,
         sqlite_db: Optional[str] = None,
         api_region: Optional[str] = None,
+        access_token: Optional[str] = None,
+        expires_at: Optional[Any] = None,
     ):
         """
         Initializes the authentication manager.
@@ -141,6 +143,8 @@ class KiroAuthManager:
                        Default location: ~/.local/share/kiro-cli/data.sqlite3
             api_region: Q API region override (optional, per-account)
                        If not specified, uses auto-detection or falls back to region
+            access_token: Initial access token if available
+            expires_at: Token expiration time
         """
         self._refresh_token = refresh_token
         self._profile_arn = profile_arn
@@ -165,8 +169,20 @@ class KiroAuthManager:
         # Track which SQLite key we loaded credentials from (for saving back to correct location)
         self._sqlite_token_key: Optional[str] = None
         
-        self._access_token: Optional[str] = None
-        self._expires_at: Optional[datetime] = None
+        self._access_token: Optional[str] = access_token
+        if isinstance(expires_at, str):
+            try:
+                if expires_at.endswith('Z'):
+                    self._expires_at = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                else:
+                    self._expires_at = datetime.fromisoformat(expires_at)
+            except Exception:
+                self._expires_at = None
+        elif isinstance(expires_at, datetime):
+            self._expires_at = expires_at
+        else:
+            self._expires_at = None
+
         self._lock = asyncio.Lock()
         
         # Auth type will be determined after loading credentials

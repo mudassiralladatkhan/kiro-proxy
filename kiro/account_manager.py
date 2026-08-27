@@ -540,13 +540,17 @@ class AccountManager:
                 )
             elif cred_type in ("refresh_token", "sso"):
                 token = creds_config.get("refresh_token") or creds_config.get("refreshToken")
+                access_token = creds_config.get("access_token") or creds_config.get("accessToken")
+                expires_at = creds_config.get("expires_at") or creds_config.get("expiresAt")
                 auth_manager = KiroAuthManager(
                     refresh_token=token,
                     profile_arn=creds_config.get("profile_arn"),
                     region=creds_config.get("region", "us-east-1"),
                     api_region=creds_config.get("api_region"),
                     client_id=client_id,
-                    client_secret=client_secret
+                    client_secret=client_secret,
+                    access_token=access_token,
+                    expires_at=expires_at
                 )
             else:
                 logger.error(f"Unknown credential type: {cred_type}")
