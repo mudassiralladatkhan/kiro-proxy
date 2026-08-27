@@ -403,82 +403,27 @@ async def generate_anthropic_web_search_sse(
         }
     })
     
-    # Event 2: content_block_start (server_tool_use)
+    # Event 2: content_block_start (text)
     yield format_sse_event("content_block_start", {
         "type": "content_block_start",
         "index": 0,
-        "content_block": {
-            "id": tool_use_id,
-            "type": "server_tool_use",
-            "name": "web_search",
-            "input": {}
-        }
-    })
-    
-    # Event 3: content_block_delta (input_json_delta)
-    yield format_sse_event("content_block_delta", {
-        "type": "content_block_delta",
-        "index": 0,
-        "delta": {
-            "type": "input_json_delta",
-            "partial_json": json.dumps({"query": query})
-        }
-    })
-    
-    # Event 4: content_block_stop (server_tool_use)
-    yield format_sse_event("content_block_stop", {
-        "type": "content_block_stop",
-        "index": 0
-    })
-    
-    # Event 5: content_block_start (web_search_tool_result)
-    search_content = []
-    for r in results.get("results", []):
-        search_content.append({
-            "type": "web_search_result",
-            "title": r.get("title", ""),
-            "url": r.get("url", ""),
-            "encrypted_content": r.get("snippet", ""),
-            "page_age": None
-        })
-    
-    yield format_sse_event("content_block_start", {
-        "type": "content_block_start",
-        "index": 1,
-        "content_block": {
-            "type": "web_search_tool_result",
-            "tool_use_id": tool_use_id,
-            "content": search_content
-        }
-    })
-    
-    # Event 6: content_block_stop (web_search_tool_result)
-    yield format_sse_event("content_block_stop", {
-        "type": "content_block_stop",
-        "index": 1
-    })
-    
-    # Event 7: content_block_start (text)
-    yield format_sse_event("content_block_start", {
-        "type": "content_block_start",
-        "index": 2,
         "content_block": {"type": "text", "text": ""}
     })
     
-    # Events 8-N: content_block_delta (text_delta) - stream summary in chunks
+    # Events 3-N: content_block_delta (text_delta) - stream summary in chunks
     chunk_size = 100
     for i in range(0, len(summary), chunk_size):
         chunk = summary[i:i + chunk_size]
         yield format_sse_event("content_block_delta", {
             "type": "content_block_delta",
-            "index": 2,
+            "index": 0,
             "delta": {"type": "text_delta", "text": chunk}
         })
     
     # Event N+1: content_block_stop (text)
     yield format_sse_event("content_block_stop", {
         "type": "content_block_stop",
-        "index": 2
+        "index": 0
     })
     
     # Event N+2: message_delta
