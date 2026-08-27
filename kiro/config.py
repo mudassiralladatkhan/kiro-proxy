@@ -86,10 +86,17 @@ DEFAULT_SERVER_HOST: str = "0.0.0.0"
 SERVER_HOST: str = os.getenv("SERVER_HOST", DEFAULT_SERVER_HOST)
 
 # Server port (default: 8000)
+# Supports Render/Heroku $PORT or custom SERVER_PORT
 # Can be overridden by CLI: python main.py --port 9000
 # Or by uvicorn directly: uvicorn main:app --port 9000
 DEFAULT_SERVER_PORT: int = 8000
-SERVER_PORT: int = int(os.getenv("SERVER_PORT", str(DEFAULT_SERVER_PORT)))
+SERVER_PORT: int = int(os.getenv("PORT") or os.getenv("SERVER_PORT", str(DEFAULT_SERVER_PORT)))
+
+# Direct JSON string with credentials array (ideal for Render/Docker env vars)
+CREDENTIALS_JSON_ENV: str = os.getenv("CREDENTIALS_JSON") or os.getenv("ACCOUNTS_JSON", "")
+
+# Comma-separated list of refresh tokens for multi-account setup on Render
+REFRESH_TOKENS: str = os.getenv("REFRESH_TOKENS", "")
 
 # ==================================================================================================
 # Proxy Server Settings
@@ -248,6 +255,50 @@ HIDDEN_MODELS: Dict[str, str] = {
 # Default: {"auto-kiro": "auto"} to avoid Cursor IDE conflict
 MODEL_ALIASES: Dict[str, str] = {
     "auto-kiro": "auto",  # Default alias to avoid Cursor's "auto" model conflict
+    # Claude Sonnet mappings (Sonnet 5, Sonnet 4.5, Sonnet 4.6, legacy names)
+    "claude-sonnet-5": "claude-sonnet-4.5",
+    "claude-5-sonnet": "claude-sonnet-4.5",
+    "sonnet-5": "claude-sonnet-4.5",
+    "claude-sonnet-4-5": "claude-sonnet-4.5",
+    "claude-sonnet-4-6": "claude-sonnet-4.6",
+    "claude-3-5-sonnet": "claude-sonnet-4.5",
+    "claude-3.5-sonnet": "claude-sonnet-4.5",
+    "claude-3-5-sonnet-20241022": "claude-sonnet-4.5",
+    "claude-3-5-sonnet-20240620": "claude-sonnet-4.5",
+    "claude-3-5-sonnet-latest": "claude-sonnet-4.5",
+    "claude-3-7-sonnet": "claude-sonnet-4.5",
+    "claude-3.7-sonnet": "claude-sonnet-4.5",
+    "claude-3-7-sonnet-20250219": "claude-sonnet-4.5",
+    "claude-3-7-sonnet-latest": "claude-sonnet-4.5",
+    
+    # Claude Opus mappings (Opus 5, Opus 4.5, Opus 4.6, Opus 4.7, legacy names)
+    "claude-opus-5": "claude-opus-4.5",
+    "claude-5-opus": "claude-opus-4.5",
+    "opus-5": "claude-opus-4.5",
+    "claude-opus-4-5": "claude-opus-4.5",
+    "claude-opus-4-6": "claude-opus-4.6",
+    "claude-opus-4-7": "claude-opus-4.7",
+    "claude-3-opus": "claude-opus-4.5",
+    "claude-3.0-opus": "claude-opus-4.5",
+    "claude-3-opus-20240229": "claude-opus-4.5",
+    "claude-3-opus-latest": "claude-opus-4.5",
+    
+    # Claude Haiku mappings
+    "claude-haiku-5": "claude-haiku-4.5",
+    "claude-5-haiku": "claude-haiku-4.5",
+    "haiku-5": "claude-haiku-4.5",
+    "claude-haiku-4-5": "claude-haiku-4.5",
+    "claude-3-5-haiku": "claude-haiku-4.5",
+    "claude-3.5-haiku": "claude-haiku-4.5",
+    "claude-3-5-haiku-20241022": "claude-haiku-4.5",
+    "claude-3-5-haiku-latest": "claude-haiku-4.5",
+    "claude-3-haiku": "claude-haiku-4.5",
+    "claude-3-haiku-20240307": "claude-haiku-4.5",
+    
+    # Short names
+    "sonnet": "claude-sonnet-4.5",
+    "opus": "claude-opus-4.5",
+    "haiku": "claude-haiku-4.5",
 }
 
 # Models to hide from /v1/models endpoint.

@@ -58,6 +58,8 @@ from kiro.config import (
     ACCOUNT_CACHE_TTL,
     STATE_SAVE_INTERVAL_SECONDS,
     FALLBACK_MODELS,
+    CREDENTIALS_JSON_ENV,
+    REFRESH_TOKENS,
 )
 from kiro.utils import get_kiro_headers
 from kiro.account_errors import ErrorType
@@ -214,23 +216,54 @@ class AccountManager:
     
     async def load_credentials(self) -> None:
         """
-        Load credentials from credentials.json.
+        Load credentials from credentials.json, CREDENTIALS_JSON env var, or REFRESH_TOKENS env var.
         
         Validates each entry and creates Account objects.
         Invalid entries are skipped with warnings.
         Folders are scanned for credential files.
         """
+        self._credentials_config = []
+
+        # 1. Check CREDENTIALS_JSON environment variable (direct JSON string from Render / cloud)
+        if CREDENTIALS_JSON_ENV and CREDENTIALS_JSON_ENV.strip():
+            try:
+                parsed = json.loads(CREDENTIALS_JSON_ENV.strip())
+                if isinstance(parsed, list):
+                    self._credentials_config.extend(parsed)
+                    logger.info(f"Loaded {len(parsed)} account(s) from CREDENTIALS_JSON environment variable")
+                elif isinstance(parsed, dict):
+                    self._credentials_config.append(parsed)
+                    logger.info("Loaded 1 account from CREDENTIALS_JSON environment variable")
+            except Exception as e:
+                logger.error(f"Failed to parse CREDENTIALS_JSON environment variable: {e}")
+
+        # 2. Check REFRESH_TOKENS environment variable (comma-separated tokens from Render)
+        if REFRESH_TOKENS and REFRESH_TOKENS.strip():
+            tokens = [t.strip() for t in REFRESH_TOKENS.split(",") if t.strip()]
+            for token in tokens:
+                self._credentials_config.append({
+                    "type": "refresh_token",
+                    "refresh_token": token,
+                    "enabled": True
+                })
+            if tokens:
+                logger.info(f"Loaded {len(tokens)} account(s) from REFRESH_TOKENS environment variable")
+
+        # 3. Check credentials file on disk
         creds_path = Path(self._credentials_file).expanduser()
-        
-        if not creds_path.exists():
+        if creds_path.exists():
+            try:
+                with open(creds_path, 'r', encoding='utf-8') as f:
+                    file_creds = json.load(f)
+                    if isinstance(file_creds, list):
+                        self._credentials_config.extend(file_creds)
+                    elif isinstance(file_creds, dict):
+                        self._credentials_config.append(file_creds)
+                logger.info(f"Loaded credentials from file: {self._credentials_file}")
+            except Exception as e:
+                logger.error(f"Failed to load credentials file: {e}")
+        elif not self._credentials_config:
             logger.warning(f"Credentials file not found: {self._credentials_file}")
-            return
-        
-        try:
-            with open(creds_path, 'r', encoding='utf-8') as f:
-                self._credentials_config = json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load credentials: {e}")
             return
         
         # Process each credential entry

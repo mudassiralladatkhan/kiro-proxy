@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: kiro-gateway
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: PROXY_API_KEY
+        generateValue: true
+      - key: ACCOUNT_SYSTEM
+        value: "true"
+      - key: CREDENTIALS_JSON
+        sync: false
+      - key: REFRESH_TOKENS
+        sync: false

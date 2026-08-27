@@ -221,13 +221,12 @@ def validate_configuration() -> None:
     Raises:
         SystemExit: If critical configuration is missing
     """
-    # Priority 1: Check if credentials.json exists (Account System)
-    # If it exists, legacy .env validation is skipped
-    from kiro.config import ACCOUNTS_CONFIG_FILE
+    # Priority 1: Check if credentials.json exists or CREDENTIALS_JSON / REFRESH_TOKENS env is set
+    from kiro.config import ACCOUNTS_CONFIG_FILE, CREDENTIALS_JSON_ENV, REFRESH_TOKENS
     creds_json_path = Path(ACCOUNTS_CONFIG_FILE)
     
-    if creds_json_path.exists():
-        logger.debug(f"Found {ACCOUNTS_CONFIG_FILE}, skipping legacy .env validation")
+    if creds_json_path.exists() or bool(CREDENTIALS_JSON_ENV) or bool(REFRESH_TOKENS):
+        logger.debug(f"Found credentials configuration, skipping legacy .env validation")
         return
     
     # Priority 2: credentials.json doesn't exist - validate legacy .env variables

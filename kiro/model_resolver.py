@@ -189,33 +189,33 @@ def normalize_model_name(name: str) -> str:
     return name
 
 
-def get_model_id_for_kiro(model_name: str, hidden_models: Dict[str, str]) -> str:
+def get_model_id_for_kiro(model_name: str, hidden_models: Dict[str, str], aliases: Optional[Dict[str, str]] = None) -> str:
     """
     Get the model ID to send to Kiro API.
     
-    This is a simple helper for converters that don't have access to the full
-    ModelResolver. It normalizes the name and checks hidden models.
-    
-    For hidden models (like claude-3.7-sonnet), returns the internal Kiro ID.
-    For regular models, returns the normalized name.
+    This is a helper for converters that normalizes the name, checks aliases and hidden models.
     
     Args:
         model_name: External model name from client
         hidden_models: Dict mapping display names to internal Kiro IDs
+        aliases: Optional Dict mapping alias names to real model IDs
     
     Returns:
         Model ID to send to Kiro API
-    
-    Examples:
-        >>> get_model_id_for_kiro("claude-haiku-4-5-20251001", {})
-        'claude-haiku-4.5'
-        >>> get_model_id_for_kiro("claude-3.7-sonnet", {"claude-3.7-sonnet": "CLAUDE_3_7_SONNET_20250219_V1_0"})
-        'CLAUDE_3_7_SONNET_20250219_V1_0'
-        >>> get_model_id_for_kiro("claude-3-7-sonnet", {"claude-3.7-sonnet": "CLAUDE_3_7_SONNET_20250219_V1_0"})
-        'CLAUDE_3_7_SONNET_20250219_V1_0'
     """
-    normalized = normalize_model_name(model_name)
-    internal = hidden_models.get(normalized, normalized)
+    if aliases is None:
+        try:
+            from kiro.config import MODEL_ALIASES
+            aliases = MODEL_ALIASES
+        except ImportError:
+            aliases = {}
+
+    # Layer 0: Check alias
+    resolved = aliases.get(model_name, model_name)
+    normalized = normalize_model_name(resolved)
+    # Check alias after normalization as well
+    resolved_normalized = aliases.get(normalized, normalized)
+    internal = hidden_models.get(resolved_normalized, resolved_normalized)
     return to_runtime_model_id(internal)
 
 
@@ -314,6 +314,13 @@ class ModelResolver:
         """
         # Layer 0: Resolve alias (if exists)
         resolved_model = self.aliases.get(external_model, external_model)
+        if resolved_model == external_model:
+            try:
+                from kiro.config import MODEL_ALIASES
+                resolved_model = MODEL_ALIASES.get(external_model, external_model)
+            except ImportError:
+                pass
+
         if resolved_model != external_model:
             logger.debug(
                 f"Alias resolved: '{external_model}' → '{resolved_model}'"
@@ -321,6 +328,15 @@ class ModelResolver:
         
         # Layer 1: Normalize name (dashes→dots, strip date)
         normalized = normalize_model_name(resolved_model)
+        if normalized != resolved_model and normalized in self.aliases:
+            normalized = self.aliases[normalized]
+        else:
+            try:
+                from kiro.config import MODEL_ALIASES
+                if normalized in MODEL_ALIASES:
+                    normalized = MODEL_ALIASES[normalized]
+            except ImportError:
+                pass
         
         logger.debug(
             f"Model resolution: '{external_model}' → normalized: '{normalized}'"

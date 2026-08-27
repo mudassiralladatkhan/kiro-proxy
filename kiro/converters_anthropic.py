@@ -317,6 +317,12 @@ def convert_anthropic_messages(
             if images:
                 total_images += len(images)
 
+        # Map system/developer roles to user to satisfy Kiro API constraints
+        if role in ("system", "developer"):
+            role = "user"
+            if text_content:
+                text_content = f"[System Context]\n{text_content}"
+
         unified_msg = UnifiedMessage(
             role=role,
             content=text_content,
