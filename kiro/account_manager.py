@@ -302,17 +302,17 @@ class AccountManager:
                 logger.warning(f"Invalid credential entry (type={cred_type} requires path): {entry}")
                 continue
             
-            # For refresh_token type, refresh_token field is required
-            if cred_type == "refresh_token" and not entry.get("refresh_token"):
-                logger.warning(f"Invalid credential entry (type=refresh_token requires refresh_token field): {entry}")
+            # For refresh_token or sso type, refresh_token field is required
+            if cred_type in ("refresh_token", "sso") and not (entry.get("refresh_token") or entry.get("refreshToken")):
+                logger.warning(f"Invalid credential entry (type={cred_type} requires refresh_token field): {entry}")
                 continue
             
-            # Handle refresh_token type (no path processing needed)
-            if cred_type == "refresh_token":
+            # Handle refresh_token / sso type (no path processing needed)
+            if cred_type in ("refresh_token", "sso"):
                 # Use deterministic hash for refresh_token (hash() is not deterministic between process restarts)
-                token = entry.get('refresh_token', '')
+                token = entry.get('refresh_token') or entry.get('refreshToken') or ''
                 token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
-                account_id = f"refresh_token_{token_hash}"
+                account_id = f"account_{token_hash}"
                 self._accounts[account_id] = Account(id=account_id)
                 logger.debug(f"Added account: {account_id}")
                 continue  # Skip path processing for refresh_token
@@ -502,11 +502,11 @@ class AccountManager:
                 path = entry.get("path", "")
                 expanded_path = Path(path).expanduser()
                 
-                if entry.get("type") == "refresh_token":
-                    # Match by deterministic hash for refresh_token type
-                    token = entry.get('refresh_token', '')
+                if entry.get("type") in ("refresh_token", "sso"):
+                    # Match by deterministic hash for refresh_token / sso type
+                    token = entry.get('refresh_token') or entry.get('refreshToken') or ''
                     token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
-                    if account_id == f"refresh_token_{token_hash}":
+                    if account_id == f"account_{token_hash}" or account_id == f"refresh_token_{token_hash}":
                         creds_config = entry
                         break
                 elif str(expanded_path.resolve()) == account_id or (expanded_path.is_dir() and account_id.startswith(str(expanded_path.resolve()) + os.sep)):
@@ -519,12 +519,17 @@ class AccountManager:
             
             # Create KiroAuthManager based on type
             cred_type = creds_config.get("type")
+            client_id = creds_config.get("client_id") or creds_config.get("clientId") or os.getenv("SSO_CLIENT_ID")
+            client_secret = creds_config.get("client_secret") or creds_config.get("clientSecret") or os.getenv("SSO_CLIENT_SECRET")
+            
             if cred_type == "json":
                 auth_manager = KiroAuthManager(
                     creds_file=account_id,
                     profile_arn=creds_config.get("profile_arn"),
                     region=creds_config.get("region", "us-east-1"),
-                    api_region=creds_config.get("api_region")
+                    api_region=creds_config.get("api_region"),
+                    client_id=client_id,
+                    client_secret=client_secret
                 )
             elif cred_type == "sqlite":
                 auth_manager = KiroAuthManager(
@@ -533,12 +538,15 @@ class AccountManager:
                     region=creds_config.get("region", "us-east-1"),
                     api_region=creds_config.get("api_region")
                 )
-            elif cred_type == "refresh_token":
+            elif cred_type in ("refresh_token", "sso"):
+                token = creds_config.get("refresh_token") or creds_config.get("refreshToken")
                 auth_manager = KiroAuthManager(
-                    refresh_token=creds_config.get("refresh_token"),
+                    refresh_token=token,
                     profile_arn=creds_config.get("profile_arn"),
                     region=creds_config.get("region", "us-east-1"),
-                    api_region=creds_config.get("api_region")
+                    api_region=creds_config.get("api_region"),
+                    client_id=client_id,
+                    client_secret=client_secret
                 )
             else:
                 logger.error(f"Unknown credential type: {cred_type}")
