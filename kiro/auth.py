@@ -35,7 +35,7 @@ import sqlite3
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any, Union
 
 import httpx
 from loguru import logger
