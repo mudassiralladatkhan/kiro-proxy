@@ -638,7 +638,17 @@ class AccountManager:
                 return False
             
             # Get token to verify credentials
-            token = await auth_manager.get_access_token()
+            try:
+                token = await auth_manager.get_access_token()
+            except Exception as e:
+                if auth_manager._access_token:
+                    logger.warning(
+                        f"Account {account_id}: Token refresh on startup encountered {e}, "
+                        "using existing access token."
+                    )
+                    token = auth_manager._access_token
+                else:
+                    raise
             
             # Determine if we should fetch models or use static list
             if _is_runtime_endpoint(auth_manager):
