@@ -937,6 +937,9 @@ class KiroAuthManager:
                         return self._access_token
                     else:
                         raise ValueError(
+                            "Token expired and refresh failed. "
+                            "Please run 'kiro-cli login' to refresh your credentials."
+                        )
                 # If we have an existing access token, fall back to it gracefully
                 if self._access_token:
                     logger.warning(
