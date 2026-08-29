@@ -180,6 +180,8 @@ class KiroAuthManager:
                 self._expires_at = None
         elif isinstance(expires_at, datetime):
             self._expires_at = expires_at
+        elif self._access_token:
+            self._expires_at = datetime.now(timezone.utc) + timedelta(minutes=50)
         else:
             self._expires_at = None
 
@@ -935,12 +937,20 @@ class KiroAuthManager:
                         return self._access_token
                     else:
                         raise ValueError(
-                            "Token expired and refresh failed. "
-                            "Please run 'kiro-cli login' to refresh your credentials."
-                        )
+                # If we have an existing access token, fall back to it gracefully
+                if self._access_token:
+                    logger.warning(
+                        f"Token refresh failed ({e.response.status_code}), continuing with existing access_token."
+                    )
+                    return self._access_token
                 # Non-SQLite mode or non-400 error - propagate the exception
                 raise
-            except Exception:
+            except Exception as e:
+                if self._access_token:
+                    logger.warning(
+                        f"Token refresh encountered error ({e}), continuing with existing access_token."
+                    )
+                    return self._access_token
                 # For any other exception, propagate it
                 raise
             
