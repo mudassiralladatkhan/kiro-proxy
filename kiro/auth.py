@@ -972,7 +972,13 @@ class KiroAuthManager:
             New access token
         """
         async with self._lock:
-            await self._refresh_token_request()
+            try:
+                await self._refresh_token_request()
+            except Exception as e:
+                if self._access_token:
+                    logger.warning(f"force_refresh encountered error ({e}), continuing with existing access_token.")
+                    return self._access_token
+                raise
             return self._access_token
     
     @property
