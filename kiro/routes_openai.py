@@ -28,6 +28,7 @@ Contains all API endpoints:
 
 import json
 from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -65,13 +66,17 @@ except ImportError:
 api_key_header = APIKeyHeader(name="Authorization", auto_error=False)
 
 
-async def verify_api_key(auth_header: str = Security(api_key_header)) -> bool:
+async def verify_api_key(
+    request: Request = None,
+    auth_header: Optional[str] = Security(api_key_header)
+) -> bool:
     """
     Verify API key in Authorization header.
     
-    Expects format: "Bearer {PROXY_API_KEY}"
+    Expects format: "Bearer {PROXY_API_KEY}" or dedicated per-account key.
     
     Args:
+        request: FastAPI Request for storing target account ID (optional)
         auth_header: Authorization header value
     
     Returns:
@@ -80,10 +85,41 @@ async def verify_api_key(auth_header: str = Security(api_key_header)) -> bool:
     Raises:
         HTTPException: 401 if key is invalid or missing
     """
-    if not auth_header or auth_header != f"Bearer {PROXY_API_KEY}":
-        logger.warning("Access attempt with invalid API key.")
+    # Support positional header argument in unit tests: verify_api_key(header)
+    if isinstance(request, str):
+        auth_header = request
+        request = None
+    elif not isinstance(auth_header, str):
+        auth_header = None
+        
+    if not auth_header:
+        logger.warning("Access attempt with missing Authorization header.")
         raise HTTPException(status_code=401, detail="Invalid or missing API Key")
-    return True
+    
+    # Must start with exact "Bearer " prefix
+    if not auth_header.startswith("Bearer "):
+        logger.warning("Access attempt with invalid Bearer format.")
+        raise HTTPException(status_code=401, detail="Invalid or missing API Key")
+        
+    token = auth_header[7:]
+    
+    # 1. Master PROXY_API_KEY check
+    if token == PROXY_API_KEY:
+        if request and hasattr(request, "state"):
+            request.state.target_account_id = None
+        return True
+    
+    # 2. Check dedicated per-account API keys if account_manager exists
+    if request and hasattr(request, "app") and hasattr(request.app, "state"):
+        account_manager = getattr(request.app.state, "account_manager", None)
+        if account_manager:
+            target_account_id = account_manager.get_account_id_for_api_key(token)
+            if target_account_id:
+                request.state.target_account_id = target_account_id
+                return True
+    
+    logger.warning("Access attempt with invalid API key.")
+    raise HTTPException(status_code=401, detail="Invalid or missing API Key")
 
 
 # --- Router ---
@@ -283,18 +319,22 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
         
         account_manager = request.app.state.account_manager
         all_accounts = list(account_manager._accounts.keys())
-        MAX_ATTEMPTS = len(all_accounts) * 2  # Full circle with margin
+        target_account_id = getattr(request.state, "target_account_id", None)
+        MAX_ATTEMPTS = 1 if target_account_id else len(all_accounts) * 2  # Single attempt for dedicated key, full circle for master
         
         last_error_message = None
         last_error_status = None
         tried_accounts = set()  # Track tried accounts in current failover loop
         
         for attempt in range(MAX_ATTEMPTS):
-            # Get next available account (excluding already tried)
-            account = await account_manager.get_next_account(
-                request_data.model,
-                exclude_accounts=tried_accounts
-            )
+            if target_account_id:
+                account = await account_manager.get_account_by_id(target_account_id)
+            else:
+                # Get next available account (excluding already tried)
+                account = await account_manager.get_next_account(
+                    request_data.model,
+                    exclude_accounts=tried_accounts
+                )
             
             if account is None:
                 # All accounts unavailable

@@ -212,6 +212,7 @@ class AccountManager:
         self._lock = asyncio.Lock()
         self._dirty = False
         self._credentials_config: List[Dict] = []
+        self._api_key_to_account_id: Dict[str, str] = {}
         self._current_account_index: int = 0  # GLOBAL sticky index for all models
     
     async def load_credentials(self) -> None:
@@ -223,6 +224,7 @@ class AccountManager:
         Folders are scanned for credential files.
         """
         self._credentials_config = []
+        self._api_key_to_account_id = {}
 
         # 1. Check CREDENTIALS_JSON environment variable (direct JSON string from Render / cloud)
         if CREDENTIALS_JSON_ENV and CREDENTIALS_JSON_ENV.strip():
@@ -268,6 +270,10 @@ class AccountManager:
 
         # 3. Check credentials file on disk
         creds_path = Path(self._credentials_file).expanduser()
+        if not creds_path.exists():
+            render_secret_path = Path("/etc/secrets") / Path(self._credentials_file).name
+            if render_secret_path.exists():
+                creds_path = render_secret_path
         if creds_path.exists():
             try:
                 with open(creds_path, 'r', encoding='utf-8') as f:
@@ -276,7 +282,7 @@ class AccountManager:
                         self._credentials_config.extend(file_creds)
                     elif isinstance(file_creds, dict):
                         self._credentials_config.append(file_creds)
-                logger.info(f"Loaded credentials from file: {self._credentials_file}")
+                logger.info(f"Loaded credentials from file: {creds_path}")
             except Exception as e:
                 logger.error(f"Failed to load credentials file: {e}")
         elif not self._credentials_config:
@@ -312,8 +318,15 @@ class AccountManager:
                 # Use deterministic hash for refresh_token (hash() is not deterministic between process restarts)
                 token = entry.get('refresh_token') or entry.get('refreshToken') or ''
                 token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
-                account_id = f"account_{token_hash}"
+                account_id = f"account_{token_hash}" if cred_type == "sso" else f"refresh_token_{token_hash}"
                 self._accounts[account_id] = Account(id=account_id)
+                
+                # Check for dedicated API key
+                api_key = entry.get("api_key") or entry.get("apiKey")
+                if api_key and isinstance(api_key, str) and api_key.strip():
+                    self._api_key_to_account_id[api_key.strip()] = account_id
+                    logger.info(f"Registered dedicated API key for account: {account_id}")
+                    
                 logger.debug(f"Added account: {account_id}")
                 continue  # Skip path processing for refresh_token
             
@@ -369,11 +382,78 @@ class AccountManager:
                 else:
                     account_id = str(expanded_path.resolve())
                 self._accounts[account_id] = Account(id=account_id)
+                
+                # Check for dedicated API key
+                api_key = entry.get("api_key") or entry.get("apiKey")
+                if api_key and isinstance(api_key, str) and api_key.strip():
+                    self._api_key_to_account_id[api_key.strip()] = account_id
+                    logger.info(f"Registered dedicated API key for account: {account_id}")
+                    
                 logger.debug(f"Added account: {account_id}")
             else:
                 logger.warning(f"Credential path not found: {path}")
         
-        logger.info(f"Loaded {len(self._accounts)} account(s) from credentials")
+        logger.info(f"Loaded {len(self._accounts)} account(s) from credentials ({len(self._api_key_to_account_id)} dedicated API key(s))")
+    
+    def get_account_id_for_api_key(self, api_key: str) -> Optional[str]:
+        """
+        Get account ID associated with a dedicated API key.
+        
+        Args:
+            api_key: The dedicated API key
+            
+        Returns:
+            Account ID if matched, None otherwise
+        """
+        if not api_key:
+            return None
+        return self._api_key_to_account_id.get(api_key.strip())
+
+    def is_valid_api_key(self, api_key: str) -> bool:
+        """
+        Check if API key matches any dedicated account key.
+        
+        Args:
+            api_key: The API key to test
+            
+        Returns:
+            True if key is registered to an account, False otherwise
+        """
+        if not api_key:
+            return False
+        return api_key.strip() in self._api_key_to_account_id
+
+    async def get_account_by_id(self, account_id: str) -> Optional[Account]:
+        """
+        Get and initialize a specific account by its unique ID.
+        
+        Args:
+            account_id: Account unique identifier
+            
+        Returns:
+            Initialized Account entity if found, None otherwise
+        """
+        async with self._lock:
+            account = self._accounts.get(account_id)
+            if not account:
+                return None
+            
+            # Lazy initialization if needed
+            if account.auth_manager is None:
+                success = await self._initialize_account(account_id)
+                if not success:
+                    return None
+            
+            # Check TTL and refresh if needed
+            if account.models_cached_at > 0:
+                age = time.time() - account.models_cached_at
+                if age > ACCOUNT_CACHE_TTL:
+                    try:
+                        await self._refresh_account_models(account_id)
+                    except Exception as e:
+                        logger.warning(f"Failed to refresh models for {account_id}: {e}")
+            
+            return account
     
     async def load_state(self) -> None:
         """

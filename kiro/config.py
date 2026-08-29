@@ -93,7 +93,7 @@ DEFAULT_SERVER_PORT: int = 8000
 SERVER_PORT: int = int(os.getenv("PORT") or os.getenv("SERVER_PORT", str(DEFAULT_SERVER_PORT)))
 
 # Direct JSON string with credentials array (ideal for Render/Docker env vars)
-CREDENTIALS_JSON_ENV: str = os.getenv("CREDENTIALS_JSON") or os.getenv("ACCOUNTS_JSON", "")
+CREDENTIALS_JSON_ENV: str = os.getenv("CREDENTIALS_JSON") or os.getenv("ACCOUNTS_JSON", "") or os.getenv("KIRO_CONFIG", "")
 
 # Comma-separated list of refresh tokens for multi-account setup on Render
 REFRESH_TOKENS: str = os.getenv("REFRESH_TOKENS", "")

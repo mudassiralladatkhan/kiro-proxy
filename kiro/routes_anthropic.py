@@ -71,17 +71,23 @@ auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 
 
 async def verify_anthropic_api_key(
+    request: Request = None,
     x_api_key: Optional[str] = Security(anthropic_api_key_header),
     authorization: Optional[str] = Security(auth_header)
 ) -> bool:
     """
     Verify API key for Anthropic API.
     
+    Supports:
+    1. Master PROXY_API_KEY
+    2. Dedicated per-account API keys (from credentials.json / KIRO_CONFIG)
+    
     Supports two authentication methods:
     1. x-api-key header (Anthropic native)
     2. Authorization: Bearer header (for compatibility)
     
     Args:
+        request: FastAPI Request for storing target account ID (optional)
         x_api_key: Value from x-api-key header
         authorization: Value from Authorization header
     
@@ -91,13 +97,50 @@ async def verify_anthropic_api_key(
     Raises:
         HTTPException: 401 if key is invalid or missing
     """
-    # Check x-api-key first (Anthropic native)
-    if x_api_key and x_api_key == PROXY_API_KEY:
-        return True
-    
-    # Fall back to Authorization: Bearer
-    if authorization and authorization == f"Bearer {PROXY_API_KEY}":
-        return True
+    # Support positional arguments in unit tests: verify_anthropic_api_key(x_key, auth)
+    if isinstance(request, str):
+        authorization = x_api_key if isinstance(x_api_key, str) else None
+        x_api_key = request
+        request = None
+    else:
+        if not isinstance(x_api_key, str):
+            x_api_key = None
+        if not isinstance(authorization, str):
+            authorization = None
+        
+    token = None
+    if x_api_key and x_api_key.strip():
+        token = x_api_key.strip()
+    elif authorization and authorization.strip():
+        if not authorization.startswith("Bearer "):
+            logger.warning("Access attempt with invalid Bearer format.")
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "type": "error",
+                    "error": {
+                        "type": "authentication_error",
+                        "message": "Invalid or missing API key. Use x-api-key header or Authorization: Bearer."
+                    }
+                }
+            )
+        token = authorization[7:].strip()
+            
+    if token:
+        # 1. Master PROXY_API_KEY check
+        if token == PROXY_API_KEY:
+            if request and hasattr(request, "state"):
+                request.state.target_account_id = None
+            return True
+            
+        # 2. Check dedicated per-account API keys if account_manager exists
+        if request and hasattr(request, "app") and hasattr(request.app, "state"):
+            account_manager = getattr(request.app.state, "account_manager", None)
+            if account_manager:
+                target_account_id = account_manager.get_account_id_for_api_key(token)
+                if target_account_id:
+                    request.state.target_account_id = target_account_id
+                    return True
     
     logger.warning("Access attempt with invalid API key (Anthropic endpoint)")
     raise HTTPException(
@@ -321,18 +364,22 @@ async def messages(
         
         account_manager = request.app.state.account_manager
         all_accounts = list(account_manager._accounts.keys())
-        MAX_ATTEMPTS = len(all_accounts) * 2  # Full circle with margin
+        target_account_id = getattr(request.state, "target_account_id", None)
+        MAX_ATTEMPTS = 1 if target_account_id else len(all_accounts) * 2  # Single attempt for dedicated key, full circle for master
         
         last_error_message = None
         last_error_status = None
         tried_accounts = set()  # Track tried accounts in current failover loop
         
         for attempt in range(MAX_ATTEMPTS):
-            # Get next available account (excluding already tried)
-            account = await account_manager.get_next_account(
-                request_data.model,
-                exclude_accounts=tried_accounts
-            )
+            if target_account_id:
+                account = await account_manager.get_account_by_id(target_account_id)
+            else:
+                # Get next available account (excluding already tried)
+                account = await account_manager.get_next_account(
+                    request_data.model,
+                    exclude_accounts=tried_accounts
+                )
             
             if account is None:
                 # All accounts unavailable

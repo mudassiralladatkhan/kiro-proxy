@@ -2519,3 +2519,41 @@ class TestCountTokensEndpoint:
         assert data["input_tokens"] > 0
         
         print("✅ max_tokens is NOT required for count_tokens")
+
+
+class TestAnthropicDedicatedApiKeyRouting:
+    """
+    Tests for routing Anthropic requests to specific accounts via dedicated API keys.
+    """
+
+    @pytest.mark.asyncio
+    async def test_verify_anthropic_api_key_with_dedicated_account_key(self):
+        """Test verify_anthropic_api_key correctly identifies and stores target_account_id."""
+        mock_request = Mock()
+        mock_request.state = Mock()
+        mock_request.app = Mock()
+        mock_request.app.state = Mock()
+        
+        mock_account_manager = Mock()
+        mock_account_manager.get_account_id_for_api_key.side_effect = lambda k: "account_target_456" if k == "anthropic-dedicated-key" else None
+        mock_request.app.state.account_manager = mock_account_manager
+        
+        # Test x-api-key with dedicated key
+        result_x = await verify_anthropic_api_key(mock_request, x_api_key="anthropic-dedicated-key")
+        assert result_x is True
+        assert mock_request.state.target_account_id == "account_target_456"
+        
+        # Test Authorization Bearer with dedicated key
+        result_auth = await verify_anthropic_api_key(mock_request, authorization="Bearer anthropic-dedicated-key")
+        assert result_auth is True
+        assert mock_request.state.target_account_id == "account_target_456"
+        
+        # Test master PROXY_API_KEY sets target_account_id to None
+        result_master = await verify_anthropic_api_key(mock_request, x_api_key=PROXY_API_KEY)
+        assert result_master is True
+        assert mock_request.state.target_account_id is None
+        
+        # Test invalid key
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_anthropic_api_key(mock_request, x_api_key="invalid_anthropic_key")
+        assert exc_info.value.status_code == 401

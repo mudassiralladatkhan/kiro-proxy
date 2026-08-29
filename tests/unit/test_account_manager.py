@@ -1300,3 +1300,98 @@ class TestFormatDuration:
         """Test formatting days."""
         assert _format_duration(86400) == "1d"
         assert _format_duration(172800) == "2d"
+
+
+class TestAccountManagerDedicatedApiKeys:
+    """
+    Tests for dedicated per-account API key management in AccountManager.
+    """
+
+    @pytest.mark.asyncio
+    async def test_load_credentials_with_dedicated_api_keys(self, tmp_path, monkeypatch):
+        """Test registering dedicated API keys from credentials configuration."""
+        creds_file = tmp_path / "credentials.json"
+        state_file = tmp_path / "state.json"
+        
+        config = [
+            {
+                "type": "refresh_token",
+                "refresh_token": "token_account_1",
+                "api_key": "custom-key-1",
+                "enabled": True
+            },
+            {
+                "type": "refresh_token",
+                "refresh_token": "token_account_2",
+                "apiKey": "custom-key-2",
+                "enabled": True
+            },
+            {
+                "type": "refresh_token",
+                "refresh_token": "token_account_3",
+                "enabled": True
+            }
+        ]
+        creds_file.write_text(json.dumps(config), encoding="utf-8")
+        
+        manager = AccountManager(str(creds_file), str(state_file))
+        await manager.load_credentials()
+        
+        assert len(manager._accounts) == 3
+        assert manager.is_valid_api_key("custom-key-1") is True
+        assert manager.is_valid_api_key("custom-key-2") is True
+        assert manager.is_valid_api_key("invalid-key") is False
+        assert manager.is_valid_api_key("") is False
+        
+        acc1_id = manager.get_account_id_for_api_key("custom-key-1")
+        acc2_id = manager.get_account_id_for_api_key("custom-key-2")
+        assert acc1_id is not None
+        assert acc2_id is not None
+        assert acc1_id != acc2_id
+
+    @pytest.mark.asyncio
+    async def test_get_account_by_id(self, tmp_path, mock_list_models_response):
+        """Test retrieving and initializing account by its ID directly."""
+        creds_file = tmp_path / "credentials.json"
+        state_file = tmp_path / "state.json"
+        
+        config = [
+            {
+                "type": "refresh_token",
+                "refresh_token": "token_direct_test",
+                "api_key": "direct-key",
+                "enabled": True
+            }
+        ]
+        creds_file.write_text(json.dumps(config), encoding="utf-8")
+        
+        manager = AccountManager(str(creds_file), str(state_file))
+        await manager.load_credentials()
+        
+        acc_id = manager.get_account_id_for_api_key("direct-key")
+        assert acc_id is not None
+        
+        with patch("kiro.account_manager.KiroHttpClient") as mock_http_class, \
+             patch.object(KiroAuthManager, "get_access_token", new_callable=AsyncMock) as mock_get_token:
+            
+            mock_get_token.return_value = "test_access_token"
+            mock_client = Mock()
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = mock_list_models_response
+            mock_client.request_with_retry = AsyncMock(return_value=mock_response)
+            mock_client.close = AsyncMock()
+            mock_http_class.return_value = mock_client
+            
+            account = await manager.get_account_by_id(acc_id)
+            assert account is not None
+            assert account.id == acc_id
+            assert account.auth_manager is not None
+
+    @pytest.mark.asyncio
+    async def test_get_account_by_id_not_found(self, tmp_path):
+        """Test get_account_by_id returns None for non-existent account."""
+        manager = AccountManager(str(tmp_path / "creds.json"), str(tmp_path / "state.json"))
+        account = await manager.get_account_by_id("non_existent_account_id")
+        assert account is None
+

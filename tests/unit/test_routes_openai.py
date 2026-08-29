@@ -1998,3 +1998,36 @@ class TestChatCompletionsLegacyMode:
         
         assert failover_enabled is False
         print("✅ Legacy mode correctly skips failover loop")
+
+
+class TestDedicatedApiKeyRouting:
+    """
+    Tests for routing requests to specific accounts via dedicated per-account API keys.
+    """
+
+    @pytest.mark.asyncio
+    async def test_verify_api_key_with_dedicated_account_key(self):
+        """Test verify_api_key correctly identifies and stores target_account_id."""
+        mock_request = Mock()
+        mock_request.state = Mock()
+        mock_request.app = Mock()
+        mock_request.app.state = Mock()
+        
+        mock_account_manager = Mock()
+        mock_account_manager.get_account_id_for_api_key.side_effect = lambda k: "account_target_123" if k == "my-dedicated-key" else None
+        mock_request.app.state.account_manager = mock_account_manager
+        
+        # Test valid dedicated key
+        result = await verify_api_key(mock_request, "Bearer my-dedicated-key")
+        assert result is True
+        assert mock_request.state.target_account_id == "account_target_123"
+        
+        # Test master PROXY_API_KEY sets target_account_id to None (global failover)
+        result_master = await verify_api_key(mock_request, f"Bearer {PROXY_API_KEY}")
+        assert result_master is True
+        assert mock_request.state.target_account_id is None
+        
+        # Test invalid key
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_api_key(mock_request, "Bearer random_wrong_key")
+        assert exc_info.value.status_code == 401
