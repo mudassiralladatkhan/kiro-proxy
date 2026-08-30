@@ -478,7 +478,7 @@ class AccountManager:
                 account.model_resolver = model_resolver
                 account.models_cached_at = time.time()
                 account.failures = 0
-                account.state = AccountState.ACTIVE
+                account.last_failure_time = 0.0
                 
                 available_models = model_resolver.get_available_models()
                 for model in available_models:
@@ -495,8 +495,9 @@ class AccountManager:
                 "status": "success",
                 "message": f"Successfully updated {updated_count} account(s) dynamically",
                 "total_accounts": len(self._accounts),
-                "active_accounts": len([a for a in self._accounts.values() if a.state == AccountState.ACTIVE])
+                "active_accounts": len([a for a in self._accounts.values() if a.auth_manager is not None])
             }
+
 
     
     def get_account_id_for_api_key(self, api_key: str) -> Optional[str]:
