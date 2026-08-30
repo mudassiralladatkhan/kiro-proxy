@@ -40,7 +40,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import httpx
 from loguru import logger
@@ -394,6 +394,107 @@ class AccountManager:
                 logger.warning(f"Credential path not found: {path}")
         
         logger.info(f"Loaded {len(self._accounts)} account(s) from credentials ({len(self._api_key_to_account_id)} dedicated API key(s))")
+
+    async def update_credentials_dynamically(self, new_credentials: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Dynamically update account credentials in memory and initialize any newly supplied credentials.
+        
+        Args:
+            new_credentials: List of credential dicts containing type, tokens, clientId, clientSecret, etc.
+            
+        Returns:
+            Dict containing updated account counts and status.
+        """
+        async with self._lock:
+            updated_count = 0
+            
+            for entry in new_credentials:
+                cred_type = entry.get("type", "sso")
+                token = entry.get("refresh_token") or entry.get("refreshToken") or ""
+                access_token = entry.get("access_token") or entry.get("accessToken")
+                expires_at = entry.get("expires_at") or entry.get("expiresAt")
+                client_id = entry.get("client_id") or entry.get("clientId")
+                client_secret = entry.get("client_secret") or entry.get("clientSecret")
+                profile_arn = entry.get("profile_arn") or entry.get("profileArn")
+                api_key = entry.get("api_key") or entry.get("apiKey")
+                
+                if not token:
+                    continue
+                    
+                token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
+                account_id = f"account_{token_hash}" if cred_type == "sso" else f"refresh_token_{token_hash}"
+                
+                # Check if account already exists
+                account = self._accounts.get(account_id)
+                if not account:
+                    account = Account(id=account_id)
+                    self._accounts[account_id] = account
+                
+                # Update config entry in _credentials_config
+                existing_entry_index = -1
+                for idx, cfg in enumerate(self._credentials_config):
+                    cfg_token = cfg.get("refresh_token") or cfg.get("refreshToken") or ""
+                    cfg_hash = hashlib.sha256(cfg_token.encode()).hexdigest()[:16]
+                    if (cfg.get("type") == cred_type) and (cfg_hash == token_hash or cfg.get("name") == entry.get("name")):
+                        existing_entry_index = idx
+                        break
+                        
+                if existing_entry_index >= 0:
+                    self._credentials_config[existing_entry_index] = entry
+                else:
+                    self._credentials_config.append(entry)
+                
+                # Register dedicated API key if provided
+                if api_key and isinstance(api_key, str) and api_key.strip():
+                    self._api_key_to_account_id[api_key.strip()] = account_id
+                
+                # Update auth manager directly if already initialized or initialize now
+                auth_manager = KiroAuthManager(
+                    refresh_token=token,
+                    profile_arn=profile_arn,
+                    region=entry.get("region", "us-east-1"),
+                    api_region=entry.get("api_region"),
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    access_token=access_token,
+                    expires_at=expires_at
+                )
+                
+                model_cache = ModelInfoCache(auth_manager, ttl=ACCOUNT_CACHE_TTL)
+                model_resolver = ModelResolver(
+                    model_cache=model_cache,
+                    hidden_models=HIDDEN_MODELS,
+                    model_aliases=MODEL_ALIASES,
+                    hidden_from_list=HIDDEN_FROM_LIST,
+                    fallback_models=FALLBACK_MODELS,
+                    auth_manager=auth_manager
+                )
+                
+                account.auth_manager = auth_manager
+                account.model_cache = model_cache
+                account.model_resolver = model_resolver
+                account.models_cached_at = time.time()
+                account.failures = 0
+                account.state = AccountState.ACTIVE
+                
+                available_models = model_resolver.get_available_models()
+                for model in available_models:
+                    if model not in self._model_to_accounts:
+                        self._model_to_accounts[model] = ModelAccountList()
+                    if account_id not in self._model_to_accounts[model].accounts:
+                        self._model_to_accounts[model].accounts.append(account_id)
+                
+                updated_count += 1
+                logger.info(f"Dynamically synchronized and activated account: {account_id}")
+
+            self._dirty = True
+            return {
+                "status": "success",
+                "message": f"Successfully updated {updated_count} account(s) dynamically",
+                "total_accounts": len(self._accounts),
+                "active_accounts": len([a for a in self._accounts.values() if a.state == AccountState.ACTIVE])
+            }
+
     
     def get_account_id_for_api_key(self, api_key: str) -> Optional[str]:
         """

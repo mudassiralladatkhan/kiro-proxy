@@ -155,6 +155,34 @@ async def health():
         "version": APP_VERSION
     }
 
+
+@router.post("/api/sync-credentials", dependencies=[Depends(verify_api_key)])
+async def sync_credentials(request: Request):
+    """
+    Secure endpoint to push freshly rotated or new credentials dynamically to the running proxy.
+    
+    Accepts a list or dictionary of account credentials and activates them in memory immediately.
+    """
+    try:
+        data = await request.json()
+        if isinstance(data, dict):
+            data = [data]
+        elif not isinstance(data, list):
+            raise HTTPException(status_code=400, detail="Payload must be a JSON array or object")
+            
+        account_manager = getattr(request.app.state, "account_manager", None)
+        if not account_manager:
+            raise HTTPException(status_code=500, detail="Account manager is not active on this server")
+            
+        result = await account_manager.update_credentials_dynamically(data)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to sync credentials dynamically: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/v1/models", response_model=ModelList, dependencies=[Depends(verify_api_key)])
 async def get_models(request: Request):
     """
