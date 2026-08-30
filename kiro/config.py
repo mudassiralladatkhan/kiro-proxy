@@ -255,6 +255,58 @@ HIDDEN_MODELS: Dict[str, str] = {
 # Default: {"auto-kiro": "auto"} to avoid Cursor IDE conflict
 MODEL_ALIASES: Dict[str, str] = {
     "auto-kiro": "auto",  # Default alias to avoid Cursor's "auto" model conflict
+    # Claude Sonnet mappings (Sonnet 5, Sonnet 4.5, Sonnet 4.6, legacy names)
+    "claude-sonnet-5": "claude-sonnet-4.5",
+    "claude-sonnet-5-1m": "claude-sonnet-4.5",
+    "claude-5-sonnet": "claude-sonnet-4.5",
+    "claude-5-sonnet-1m": "claude-sonnet-4.5",
+    "sonnet-5": "claude-sonnet-4.5",
+    "sonnet-5-1m": "claude-sonnet-4.5",
+    "claude-sonnet-4-5": "claude-sonnet-4.5",
+    "claude-sonnet-4-5-1m": "claude-sonnet-4.5",
+    "claude-sonnet-4-6": "claude-sonnet-4.6",
+    "claude-3-5-sonnet": "claude-sonnet-4.5",
+    "claude-3.5-sonnet": "claude-sonnet-4.5",
+    "claude-3-5-sonnet-20241022": "claude-sonnet-4.5",
+    "claude-3-5-sonnet-20240620": "claude-sonnet-4.5",
+    "claude-3-5-sonnet-latest": "claude-sonnet-4.5",
+    
+    # Claude Opus mappings (Opus 5, Opus 4.5, Opus 4.6, Opus 4.7, legacy names)
+    "claude-opus-5": "claude-opus-4.5",
+    "claude-opus-5-1m": "claude-opus-4.5",
+    "claude-5-opus": "claude-opus-4.5",
+    "claude-5-opus-1m": "claude-opus-4.5",
+    "opus-5": "claude-opus-4.5",
+    "opus-5-1m": "claude-opus-4.5",
+    "claude-opus-4-5": "claude-opus-4.5",
+    "claude-opus-4-5-1m": "claude-opus-4.5",
+    "claude-opus-4-6": "claude-opus-4.6",
+    "claude-opus-4-7": "claude-opus-4.7",
+    "claude-3-opus": "claude-opus-4.5",
+    "claude-3.0-opus": "claude-opus-4.5",
+    "claude-3-opus-20240229": "claude-opus-4.5",
+    "claude-3-opus-latest": "claude-opus-4.5",
+    
+    # Claude Haiku mappings
+    "claude-haiku-5": "claude-haiku-4.5",
+    "claude-haiku-5-1m": "claude-haiku-4.5",
+    "claude-5-haiku": "claude-haiku-4.5",
+    "claude-5-haiku-1m": "claude-haiku-4.5",
+    "haiku-5": "claude-haiku-4.5",
+    "haiku-5-1m": "claude-haiku-4.5",
+    "claude-haiku-4-5": "claude-haiku-4.5",
+    "claude-haiku-4-5-1m": "claude-haiku-4.5",
+    "claude-3-5-haiku": "claude-haiku-4.5",
+    "claude-3.5-haiku": "claude-haiku-4.5",
+    "claude-3-5-haiku-20241022": "claude-haiku-4.5",
+    "claude-3-5-haiku-latest": "claude-haiku-4.5",
+    "claude-3-haiku": "claude-haiku-4.5",
+    "claude-3-haiku-20240307": "claude-haiku-4.5",
+    
+    # Short names
+    "sonnet": "claude-sonnet-4.5",
+    "opus": "claude-opus-4.5",
+    "haiku": "claude-haiku-4.5",
 }
 
 # Models to hide from /v1/models endpoint.
