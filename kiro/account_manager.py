@@ -460,14 +460,17 @@ class AccountManager:
                     expires_at=expires_at
                 )
                 
-                model_cache = ModelInfoCache(auth_manager, ttl=ACCOUNT_CACHE_TTL)
+                model_cache = ModelInfoCache()
+                await model_cache.update(FALLBACK_MODELS)
+                
+                for display_name, internal_id in HIDDEN_MODELS.items():
+                    model_cache.add_hidden_model(display_name, internal_id)
+                
                 model_resolver = ModelResolver(
-                    model_cache=model_cache,
+                    cache=model_cache,
                     hidden_models=HIDDEN_MODELS,
-                    model_aliases=MODEL_ALIASES,
-                    hidden_from_list=HIDDEN_FROM_LIST,
-                    fallback_models=FALLBACK_MODELS,
-                    auth_manager=auth_manager
+                    aliases=MODEL_ALIASES,
+                    hidden_from_list=HIDDEN_FROM_LIST
                 )
                 
                 account.auth_manager = auth_manager
