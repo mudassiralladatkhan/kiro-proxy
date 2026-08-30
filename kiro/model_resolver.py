@@ -128,8 +128,9 @@ def normalize_model_name(name: str) -> str:
     if not name:
         return name
 
-    # Strip context window suffix (e.g., [1m], [200k]) — client-side indicator, not a model ID
+    # Strip context window suffix (e.g., [1m], [200k], -1m, -200k) — client-side indicator, not a model ID
     name = re.sub(r'\[\d+[mk]\]$', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'-\d+[mk]$', '', name, flags=re.IGNORECASE)
 
     # Lowercase for consistent matching
     name_lower = name.lower()
